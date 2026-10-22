@@ -14,51 +14,51 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Install LLVM and Make
+      - name: Install and locate LLVM
         shell: pwsh
         run: |
           choco install llvm make -y --no-progress
+
+          $roots = @(
+            "C:\Program Files\LLVM\bin",
+            "C:\Program Files (x86)\LLVM\bin",
+            "C:\ProgramData\chocolatey\bin",
+            "C:\ProgramData\chocolatey\lib\llvm\tools\LLVM\bin"
+          )
 
           $clang = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
           $linker = Get-Command lld-link.exe -ErrorAction SilentlyContinue
 
           if (-not $clang -or -not $linker) {
-            $roots = @(
-              "C:\Program Files\LLVM",
-              "C:\Program Files (x86)\LLVM",
-              "C:\tools\llvm",
-              "C:\ProgramData\chocolatey\lib\llvm"
-            )
-
-            $clangFile = Get-ChildItem $roots -Filter clang-cl.exe `
-              -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-
-            $linkerFile = Get-ChildItem $roots -Filter lld-link.exe `
-              -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-
-            if (-not $clangFile) {
-              throw "Could not locate clang-cl.exe"
+            foreach ($root in $roots) {
+              if ((Test-Path "$root\clang-cl.exe") -and
+                  (Test-Path "$root\lld-link.exe")) {
+                $llvmBin = $root
+                break
+              }
             }
 
-            if (-not $linkerFile) {
-              throw "Could not locate lld-link.exe"
+            if (-not $llvmBin) {
+              throw "Could not locate clang-cl.exe and lld-link.exe"
             }
 
-            $llvmBin = $clangFile.DirectoryName
+            "$llvmBin" | Out-File $env:GITHUB_PATH -Append
             $env:Path = "$llvmBin;$env:Path"
-            $llvmBin | Out-File $env:GITHUB_PATH -Append
           }
 
           clang-cl.exe --version
           lld-link.exe /?
           make --version
 
-      - name: Prepare SDK dependencies
+      - name: Locate MSVC and Windows SDK
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found"
+          }
+
           $vs = & $vswhere -latest -products '*' -property installationPath
 
           if (-not $vs) {
@@ -76,46 +76,47 @@ jobs:
 
           $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
           $sdkVersion = Get-ChildItem "$kitRoot\Include" -Directory |
+            Where-Object {
+              Test-Path "$kitRoot\Lib\$($_.Name)\ucrt\x86\ucrt.lib"
+            } |
             Sort-Object { [version]$_.Name } -Descending |
             Select-Object -First 1 -ExpandProperty Name
 
           if (-not $sdkVersion) {
-            throw "Windows SDK not found"
+            throw "Windows SDK with x86 libraries not found"
           }
 
-          $sdkInc = "$kitRoot\Include\$sdkVersion"
-          $sdkLib = "$kitRoot\Lib\$sdkVersion"
-          $root = Join-Path $PWD "xwinSDK"
-
-          $dirs = @(
-            "$root\crt\include",
-            "$root\crt\lib\x86",
-            "$root\sdk\include\ucrt",
-            "$root\sdk\include\um",
-            "$root\sdk\include\shared",
-            "$root\sdk\lib\ucrt\x86",
-            "$root\sdk\lib\um\x86"
-          )
-
-          New-Item -ItemType Directory -Force $dirs | Out-Null
-
-          Copy-Item "$($vc.FullName)\include\*" "$root\crt\include" -Recurse -Force
-          Copy-Item "$($vc.FullName)\lib\x86\*" "$root\crt\lib\x86" -Recurse -Force
-
-          Copy-Item "$sdkInc\ucrt\*" "$root\sdk\include\ucrt" -Recurse -Force
-          Copy-Item "$sdkInc\um\*" "$root\sdk\include\um" -Recurse -Force
-          Copy-Item "$sdkInc\shared\*" "$root\sdk\include\shared" -Recurse -Force
-
-          Copy-Item "$sdkLib\ucrt\x86\*" "$root\sdk\lib\ucrt\x86" -Recurse -Force
-          Copy-Item "$sdkLib\um\x86\*" "$root\sdk\lib\um\x86" -Recurse -Force
-
-          if (-not (Test-Path "$root\crt\include\stdlib.h")) {
-            throw "MSVC CRT headers were not copied correctly"
+          $vars = @{
+            MSVC_INCLUDE = "$($vc.FullName)\include"
+            MSVC_LIB     = "$($vc.FullName)\lib\x86"
+            SDK_UCRT_INC = "$kitRoot\Include\$sdkVersion\ucrt"
+            SDK_UM_INC   = "$kitRoot\Include\$sdkVersion\um"
+            SDK_SHARED_INC = "$kitRoot\Include\$sdkVersion\shared"
+            SDK_UCRT_LIB = "$kitRoot\Lib\$sdkVersion\ucrt\x86"
+            SDK_UM_LIB   = "$kitRoot\Lib\$sdkVersion\um\x86"
           }
 
-          if (-not (Test-Path "$root\sdk\include\um\Windows.h")) {
-            throw "Windows SDK headers were not copied correctly"
+          foreach ($name in $vars.Keys) {
+            $path = $vars[$name]
+
+            if (-not (Test-Path $path)) {
+              throw "Required SDK path not found: $path"
+            }
+
+            "$name=$($path -replace '\\','/')" |
+              Out-File $env:GITHUB_ENV -Append
           }
+
+          if (-not (Test-Path "$($vc.FullName)\include\stdlib.h")) {
+            throw "MSVC stdlib.h not found"
+          }
+
+          if (-not (Test-Path "$kitRoot\Include\$sdkVersion\um\Windows.h")) {
+            throw "Windows.h not found"
+          }
+
+          Write-Host "Using MSVC version $($vc.Name)"
+          Write-Host "Using Windows SDK $sdkVersion"
 
       - name: Prepare DirectX headers
         shell: pwsh
@@ -131,17 +132,31 @@ jobs:
             Select-Object -First 1
 
           if (-not $header) {
-            throw "d3dx9.h was not found in the downloaded package"
+            throw "d3dx9.h not found in the downloaded package"
           }
 
-          New-Item -ItemType Directory -Force d3d9x_headers | Out-Null
-          Copy-Item "$($header.DirectoryName)\*" d3d9x_headers -Recurse -Force
+          New-Item -ItemType Directory -Force d3d9x_headers |
+            Out-Null
 
-      - name: Verify Makefile
+          Copy-Item "$($header.DirectoryName)\*" `
+            d3d9x_headers -Recurse -Force
+
+          "D3DX_INCLUDES=$((Resolve-Path d3d9x_headers).Path -replace '\\','/')" |
+            Out-File $env:GITHUB_ENV -Append
+
+      - name: Verify build configuration
         shell: pwsh
         run: |
           if (-not (Test-Path Makefile)) {
-            throw "Makefile not found at repository root"
+            throw "Makefile missing from repository root"
+          }
+
+          if (-not (Test-Path MinHook_134\include)) {
+            throw "MinHook_134/include directory not found"
+          }
+
+          if (-not (Test-Path d3d9x_headers\d3dx9.h)) {
+            throw "DirectX header is missing"
           }
 
           $makefile = Get-Content Makefile -Raw
@@ -151,12 +166,12 @@ jobs:
           }
 
           if ($makefile.Contains("/Fo:`$@")) {
-            throw "Change /Fo:`$@ to /Fo`$@ in both compilation rules"
+            throw "Fix /Fo`$@ in Makefile compilation rules"
           }
 
-          Write-Host "Makefile checks passed."
+          Write-Host "Build configuration checks passed."
 
-      - name: Build DLL
+      - name: Build 32-bit DLL
         shell: pwsh
         run: |
           make
@@ -165,8 +180,8 @@ jobs:
             throw "Build failed: UnitXP_SP3.dll was not produced"
           }
 
-          Write-Host "DLL build completed."
-          Get-Item UnitXP_SP3.dll | Format-List Name, Length, LastWriteTime
+          Get-Item UnitXP_SP3.dll |
+            Format-List Name, Length, LastWriteTime
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
