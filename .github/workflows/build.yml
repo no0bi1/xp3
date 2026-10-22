@@ -18,7 +18,15 @@ jobs:
         shell: pwsh
         run: |
           choco install llvm make -y --no-progress
-          "C:\Program Files\LLVM" | Out-File $env:GITHUB_PATH -Append
+
+          $llvm = "C:\Program Files\LLVM"
+          if (-not (Test-Path "$llvm\clang-cl.exe")) {
+            throw "clang-cl.exe was not found at $llvm"
+          }
+
+          $env:Path = "$llvm;$env:Path"
+          "$llvm" | Out-File $env:GITHUB_PATH -Append
+
           where.exe clang-cl
           where.exe lld-link
           where.exe make
@@ -28,57 +36,104 @@ jobs:
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vs = & $vswhere -latest -products '*' -property installationPath
-          if (-not $vs) { throw "Visual Studio installation not found" }
+
+          if (-not $vs) {
+            throw "Visual Studio installation not found"
+          }
 
           $vcRoot = Join-Path $vs "VC\Tools\MSVC"
           $vc = Get-ChildItem $vcRoot -Directory |
             Sort-Object { [version]$_.Name } -Descending |
             Select-Object -First 1
 
+          if (-not $vc) {
+            throw "MSVC toolchain not found"
+          }
+
           $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
           $sdkVersion = Get-ChildItem "$kitRoot\Include" -Directory |
             Sort-Object { [version]$_.Name } -Descending |
             Select-Object -First 1 -ExpandProperty Name
 
+          if (-not $sdkVersion) {
+            throw "Windows SDK not found"
+          }
+
           $sdkInc = "$kitRoot\Include\$sdkVersion"
           $sdkLib = "$kitRoot\Lib\$sdkVersion"
           $root = Join-Path $PWD "xwinSDK"
 
-          New-Item -ItemType Directory -Force `
-            "$root\crt\include", "$root\crt\lib\x86",
-            "$root\sdk\include\ucrt", "$root\sdk\include\um",
-            "$root\sdk\include\shared", "$root\sdk\lib\ucrt\x86",
-            "$root\sdk\lib\um\x86" | Out-Null
+          $dirs = @(
+            "$root\crt\include",
+            "$root\crt\lib\x86",
+            "$root\sdk\include\ucrt",
+            "$root\sdk\include\um",
+            "$root\sdk\include\shared",
+            "$root\sdk\lib\ucrt\x86",
+            "$root\sdk\lib\um\x86"
+          )
+
+          New-Item -ItemType Directory -Force $dirs | Out-Null
 
           Copy-Item "$($vc.FullName)\include\*" "$root\crt\include" -Recurse -Force
           Copy-Item "$($vc.FullName)\lib\x86\*" "$root\crt\lib\x86" -Recurse -Force
+
           Copy-Item "$sdkInc\ucrt\*" "$root\sdk\include\ucrt" -Recurse -Force
           Copy-Item "$sdkInc\um\*" "$root\sdk\include\um" -Recurse -Force
           Copy-Item "$sdkInc\shared\*" "$root\sdk\include\shared" -Recurse -Force
+
           Copy-Item "$sdkLib\ucrt\x86\*" "$root\sdk\lib\ucrt\x86" -Recurse -Force
           Copy-Item "$sdkLib\um\x86\*" "$root\sdk\lib\um\x86" -Recurse -Force
+
+          if (-not (Test-Path "$root\crt\include\stdlib.h")) {
+            throw "MSVC CRT headers were not copied correctly"
+          }
+
+          if (-not (Test-Path "$root\sdk\include\um\Windows.h")) {
+            throw "Windows SDK headers were not copied correctly"
+          }
 
       - name: Prepare DirectX headers
         shell: pwsh
         run: |
           $url = "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8"
-          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\d3dx.nupkg"
-          Expand-Archive "$env:RUNNER_TEMP\d3dx.nupkg" `
-            -DestinationPath "$env:RUNNER_TEMP\d3dx" -Force
+          $package = "$env:RUNNER_TEMP\d3dx.nupkg"
+          $destination = "$env:RUNNER_TEMP\d3dx"
 
-          $header = Get-ChildItem "$env:RUNNER_TEMP\d3dx" `
-            -Filter d3dx9.h -Recurse | Select-Object -First 1
-          if (-not $header) { throw "d3dx9.h not found" }
+          Invoke-WebRequest $url -OutFile $package
+          Expand-Archive $package -DestinationPath $destination -Force
+
+          $header = Get-ChildItem $destination -Filter d3dx9.h -Recurse |
+            Select-Object -First 1
+
+          if (-not $header) {
+            throw "d3dx9.h was not found in the downloaded package"
+          }
 
           New-Item -ItemType Directory -Force d3d9x_headers | Out-Null
           Copy-Item "$($header.DirectoryName)\*" d3d9x_headers -Recurse -Force
 
+      - name: Verify Makefile fixes
+        shell: pwsh
+        run: |
+          $makefile = Get-Content Makefile -Raw
+
+          if ($makefile.Contains("-flto=thin")) {
+            throw "Remove -flto=thin from CXXFLAGS before building"
+          }
+
+          if ($makefile.Contains("/Fo:`$@")) {
+            throw "Replace /Fo:`$@ with /Fo`$@ in both compilation rules"
+          }
+
       - name: Build DLL
         shell: pwsh
         run: |
+          $env:Path = "C:\Program Files\LLVM;$env:Path"
           make
+
           if (-not (Test-Path UnitXP_SP3.dll)) {
-            throw "Build failed: DLL was not produced"
+            throw "Build failed: UnitXP_SP3.dll was not produced"
           }
 
       - name: Upload DLL
