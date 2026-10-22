@@ -8,184 +8,78 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Install and locate LLVM
-        shell: pwsh
+      - name: Install build tools
         run: |
-          choco install llvm make -y --no-progress
-
-          $roots = @(
-            "C:\Program Files\LLVM\bin",
-            "C:\Program Files (x86)\LLVM\bin",
-            "C:\ProgramData\chocolatey\bin",
-            "C:\ProgramData\chocolatey\lib\llvm\tools\LLVM\bin"
-          )
-
-          $clang = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
-          $linker = Get-Command lld-link.exe -ErrorAction SilentlyContinue
-
-          if (-not $clang -or -not $linker) {
-            foreach ($root in $roots) {
-              if ((Test-Path "$root\clang-cl.exe") -and
-                  (Test-Path "$root\lld-link.exe")) {
-                $llvmBin = $root
-                break
-              }
-            }
-
-            if (-not $llvmBin) {
-              throw "Could not locate clang-cl.exe and lld-link.exe"
-            }
-
-            "$llvmBin" | Out-File $env:GITHUB_PATH -Append
-            $env:Path = "$llvmBin;$env:Path"
-          }
-
-          clang-cl.exe --version
-          lld-link.exe /?
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm make curl unzip
+          clang-cl --version
+          lld-link --version
           make --version
 
-      - name: Locate MSVC and Windows SDK
-        shell: pwsh
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install xwin
         run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          cargo install xwin --locked
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/xwin" --help
 
-          if (-not (Test-Path $vswhere)) {
-            throw "vswhere.exe not found"
-          }
-
-          $vs = & $vswhere -latest -products '*' -property installationPath
-
-          if (-not $vs) {
-            throw "Visual Studio installation not found"
-          }
-
-          $vcRoot = Join-Path $vs "VC\Tools\MSVC"
-          $vc = Get-ChildItem $vcRoot -Directory |
-            Sort-Object { [version]$_.Name } -Descending |
-            Select-Object -First 1
-
-          if (-not $vc) {
-            throw "MSVC toolchain not found"
-          }
-
-          $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
-          $sdkVersion = Get-ChildItem "$kitRoot\Include" -Directory |
-            Where-Object {
-              Test-Path "$kitRoot\Lib\$($_.Name)\ucrt\x86\ucrt.lib"
-            } |
-            Sort-Object { [version]$_.Name } -Descending |
-            Select-Object -First 1 -ExpandProperty Name
-
-          if (-not $sdkVersion) {
-            throw "Windows SDK with x86 libraries not found"
-          }
-
-          $vars = @{
-            MSVC_INCLUDE = "$($vc.FullName)\include"
-            MSVC_LIB     = "$($vc.FullName)\lib\x86"
-            SDK_UCRT_INC = "$kitRoot\Include\$sdkVersion\ucrt"
-            SDK_UM_INC   = "$kitRoot\Include\$sdkVersion\um"
-            SDK_SHARED_INC = "$kitRoot\Include\$sdkVersion\shared"
-            SDK_UCRT_LIB = "$kitRoot\Lib\$sdkVersion\ucrt\x86"
-            SDK_UM_LIB   = "$kitRoot\Lib\$sdkVersion\um\x86"
-          }
-
-          foreach ($name in $vars.Keys) {
-            $path = $vars[$name]
-
-            if (-not (Test-Path $path)) {
-              throw "Required SDK path not found: $path"
-            }
-
-            "$name=$($path -replace '\\','/')" |
-              Out-File $env:GITHUB_ENV -Append
-          }
-
-          if (-not (Test-Path "$($vc.FullName)\include\stdlib.h")) {
-            throw "MSVC stdlib.h not found"
-          }
-
-          if (-not (Test-Path "$kitRoot\Include\$sdkVersion\um\Windows.h")) {
-            throw "Windows.h not found"
-          }
-
-          Write-Host "Using MSVC version $($vc.Name)"
-          Write-Host "Using Windows SDK $sdkVersion"
-
-      - name: Prepare DirectX headers
-        shell: pwsh
+      - name: Download x86 Windows SDK
         run: |
-          $url = "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8"
-          $package = "$env:RUNNER_TEMP\d3dx.nupkg"
-          $destination = "$env:RUNNER_TEMP\d3dx"
+          xwin --arch x86 --accept-license splat \
+            --output ./xwinSDK \
+            --preserve-ms-arch-notation
 
-          Invoke-WebRequest $url -OutFile $package
-          Expand-Archive $package -DestinationPath $destination -Force
+          test -f xwinSDK/crt/include/vcruntime.h
+          test -f xwinSDK/sdk/include/ucrt/stdlib.h
+          test -f xwinSDK/sdk/lib/ucrt/x86/ucrt.lib
+          test -f xwinSDK/sdk/lib/um/x86/kernel32.lib
+          test -f xwinSDK/crt/lib/x86/libcmt.lib
 
-          $header = Get-ChildItem $destination -Filter d3dx9.h -Recurse |
-            Select-Object -First 1
-
-          if (-not $header) {
-            throw "d3dx9.h not found in the downloaded package"
-          }
-
-          New-Item -ItemType Directory -Force d3d9x_headers |
-            Out-Null
-
-          Copy-Item "$($header.DirectoryName)\*" `
-            d3d9x_headers -Recurse -Force
-
-          "D3DX_INCLUDES=$((Resolve-Path d3d9x_headers).Path -replace '\\','/')" |
-            Out-File $env:GITHUB_ENV -Append
-
-      - name: Verify build configuration
-        shell: pwsh
+      - name: Prepare DirectX 9 headers
         run: |
-          if (-not (Test-Path Makefile)) {
-            throw "Makefile missing from repository root"
-          }
+          curl -fL \
+            "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8" \
+            -o /tmp/d3dx.nupkg
 
-          if (-not (Test-Path MinHook_134\include)) {
-            throw "MinHook_134/include directory not found"
-          }
+          mkdir -p /tmp/d3dx d3d9x_headers
+          unzip -q /tmp/d3dx.nupkg -d /tmp/d3dx
 
-          if (-not (Test-Path d3d9x_headers\d3dx9.h)) {
-            throw "DirectX header is missing"
-          }
+          header=$(find /tmp/d3dx -name d3dx9.h -print -quit)
+          if [ -z "$header" ]; then
+            echo "d3dx9.h not found in package"
+            exit 1
+          fi
 
-          $makefile = Get-Content Makefile -Raw
+          cp "$(dirname "$header")"/* d3d9x_headers/
 
-          if ($makefile.Contains("-flto=thin")) {
-            throw "Remove -flto=thin from Makefile"
-          }
+          test -f d3d9x_headers/d3dx9.h
 
-          if ($makefile.Contains("/Fo:`$@")) {
-            throw "Fix /Fo`$@ in Makefile compilation rules"
-          }
-
-          Write-Host "Build configuration checks passed."
+      - name: Verify MinHook and source
+        run: |
+          test -f MinHook_134/include/MinHook.h
+          test -f coffTimeDateStamp.cpp
+          test -f Makefile
+          echo "Required project files found."
 
       - name: Build 32-bit DLL
-        shell: pwsh
         run: |
-          make
+          make clean
+          make V=1
 
-          if (-not (Test-Path UnitXP_SP3.dll)) {
-            throw "Build failed: UnitXP_SP3.dll was not produced"
-          }
-
-          Get-Item UnitXP_SP3.dll |
-            Format-List Name, Length, LastWriteTime
+          test -s UnitXP_SP3.dll
+          file UnitXP_SP3.dll
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: UnitXP-SP3-v89-build
+          name: UnitXP-SP3-v89-x86
           path: UnitXP_SP3.dll
           if-no-files-found: error
