@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate repository files
+      - name: Validate source files
         shell: bash
         run: |
           set -euxo pipefail
@@ -28,7 +28,7 @@ jobs:
           test -f MinHook_134/src/hook.c
           test -f MinHook_134/src/trampoline.c
 
-          echo "Source and MinHook checks passed."
+          echo "Source validation passed."
 
       - name: Install Clang 19 and LLVM tools
         shell: bash
@@ -44,13 +44,19 @@ jobs:
             curl \
             unzip
 
-          test -x /usr/lib/llvm-19/bin/clang-cl
+          test -x /usr/lib/llvm-19/bin/clang
           test -x /usr/lib/llvm-19/bin/lld-link
+
+          sudo tee /usr/local/bin/clang-cl >/dev/null <<'EOF'
+          #!/usr/bin/env bash
+          exec /usr/lib/llvm-19/bin/clang --driver-mode=cl "$@"
+          EOF
+          sudo chmod +x /usr/local/bin/clang-cl
 
           echo "/usr/lib/llvm-19/bin" >> "$GITHUB_PATH"
 
-          /usr/lib/llvm-19/bin/clang-cl --version
-          /usr/lib/llvm-19/bin/lld-link --version
+          clang-cl --version
+          lld-link --version
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -81,7 +87,7 @@ jobs:
           test -f xwinSDK/sdk/lib/um/x86/kernel32.lib
           test -f xwinSDK/crt/lib/x86/libcmt.lib
 
-          echo "Windows SDK checks passed."
+          echo "Windows SDK validation passed."
 
       - name: Download DirectX 9 headers
         shell: bash
@@ -101,7 +107,7 @@ jobs:
           cp "$(dirname "$header")"/* d3d9x_headers/
           test -f d3d9x_headers/d3dx9.h
 
-          echo "DirectX 9 header checks passed."
+          echo "DirectX 9 headers validated."
 
       - name: Build 32-bit DLL
         shell: bash
@@ -111,7 +117,7 @@ jobs:
           make clean
 
           make V=1 \
-            CXX=/usr/lib/llvm-19/bin/clang-cl \
+            CXX=clang-cl \
             LD=/usr/lib/llvm-19/bin/lld-link
 
           test -s UnitXP_SP3.dll
