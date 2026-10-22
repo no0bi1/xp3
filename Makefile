@@ -5,11 +5,9 @@ CXX = clang-cl
 LD = lld-link
 
 # --- Dependencies ---
+XWIN_ROOT = ./xwinSDK
 MINHOOK_DIR = ./MinHook_134
-D3DX_INCLUDES ?= ./d3d9x_headers
-
-# SDK paths are exported by the GitHub Actions workflow.
-# GNU Make imports these environment variables automatically.
+D3DX_INCLUDES = ./d3d9x_headers
 
 # --- Project ---
 TARGET = UnitXP_SP3.dll
@@ -48,29 +46,26 @@ OBJS = $(patsubst %.cpp,%.obj,$(patsubst %.c,%.obj,$(SRCS)))
 
 LIBS = user32.lib kernel32.lib gdi32.lib libcmt.lib
 
-# --- Common compiler flags ---
+# --- Compiler flags ---
 COMMON_FLAGS = --target=$(TRIPLE) \
-    /O1 /MT /W3 /nologo \
-    /DWIN32_LEAN_AND_MEAN /D_X86_ /D_WIN32 \
-    /Z7 /GS \
-    -imsvc "$(MSVC_INCLUDE)" \
-    -imsvc "$(SDK_UCRT_INC)" \
-    -imsvc "$(SDK_UM_INC)" \
-    -imsvc "$(SDK_SHARED_INC)" \
+    /O1 /MT /W3 /nologo /hotpatch \
+    /arch:SSE2 /fp:precise \
+    /DWIN32_LEAN_AND_MEAN /D_X86_ /D_WIN32 /DNULL=0 \
+    /Z7 /GS /Gy \
+    -imsvc "$(XWIN_ROOT)/crt/include" \
+    -imsvc "$(XWIN_ROOT)/sdk/include/ucrt" \
+    -imsvc "$(XWIN_ROOT)/sdk/include/um" \
+    -imsvc "$(XWIN_ROOT)/sdk/include/shared" \
     -imsvc "$(MINHOOK_DIR)/include"
 
-# --- C++ flags ---
 CXXFLAGS = $(COMMON_FLAGS) \
-    /EHsc /arch:SSE2 /fp:precise \
-    /std:c++17 /Zc:__cplusplus \
-    /DNULL=0 /Gy \
+    /EHsc /std:c++17 /Zc:__cplusplus \
     -Wno-microsoft-cast \
     -Wno-unused-parameter \
     -Wno-unused-variable \
     -Wno-unused-function \
     -imsvc "$(D3DX_INCLUDES)"
 
-# --- C flags ---
 CFLAGS = $(COMMON_FLAGS)
 
 # --- Linker flags ---
@@ -78,9 +73,9 @@ LDFLAGS = /NOLOGO /DLL /MACHINE:X86 \
     /OPT:REF /OPT:ICF /SAFESEH \
     /NXCOMPAT /FUNCTIONPADMIN \
     /DEBUG /PDB:"$(TARGET:.dll=.pdb)" /ignore:4099 \
-    /LIBPATH:"$(MSVC_LIB)" \
-    /LIBPATH:"$(SDK_UCRT_LIB)" \
-    /LIBPATH:"$(SDK_UM_LIB)"
+    /LIBPATH:"$(XWIN_ROOT)/crt/lib/x86" \
+    /LIBPATH:"$(XWIN_ROOT)/sdk/lib/ucrt/x86" \
+    /LIBPATH:"$(XWIN_ROOT)/sdk/lib/um/x86"
 
 # --- Build rules ---
 all: $(TARGET)
