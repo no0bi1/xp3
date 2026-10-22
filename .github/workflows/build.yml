@@ -15,56 +15,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Inspect repository and MinHook
+      - name: Validate repository files
         shell: bash
         run: |
           set -euxo pipefail
 
-          echo "Commit:"
-          git rev-parse HEAD
-
-          echo "Repository root:"
-          ls -la
-
-          echo "MinHook headers and sources:"
-          find . -type f \( \
-            -iname 'MinHook.h' -o \
-            -iname 'buffer.c' -o \
-            -iname 'hde32.c' -o \
-            -iname 'hook.c' -o \
-            -iname 'trampoline.c' \
-          \) -print
-
           test -f Makefile
           test -f coffTimeDateStamp.cpp
+          test -f MinHook_134/include/MinHook.h
+          test -f MinHook_134/src/buffer.c
+          test -f MinHook_134/src/hde/hde32.c
+          test -f MinHook_134/src/hook.c
+          test -f MinHook_134/src/trampoline.c
 
-          if [ ! -f MinHook_134/include/MinHook.h ]; then
-            echo "::error::MinHook.h is not at MinHook_134/include/MinHook.h."
-            echo "The listing above shows where the file exists in this checkout."
-            exit 1
-          fi
+          echo "Source and MinHook checks passed."
 
-      - name: Install Clang and LLVM
+      - name: Install Clang 19 and LLVM tools
         shell: bash
         run: |
           set -euxo pipefail
 
           sudo apt-get update
           sudo apt-get install -y \
-            clang-18 \
-            lld-18 \
-            llvm-18 \
+            clang-19 \
+            lld-19 \
+            llvm-19 \
             make \
             curl \
             unzip
 
-          test -x /usr/lib/llvm-18/bin/clang-cl
-          test -x /usr/lib/llvm-18/bin/lld-link
+          test -x /usr/lib/llvm-19/bin/clang-cl
+          test -x /usr/lib/llvm-19/bin/lld-link
 
-          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+          echo "/usr/lib/llvm-19/bin" >> "$GITHUB_PATH"
 
-          /usr/lib/llvm-18/bin/clang-cl --version
-          /usr/lib/llvm-18/bin/lld-link --version
+          /usr/lib/llvm-19/bin/clang-cl --version
+          /usr/lib/llvm-19/bin/lld-link --version
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -95,6 +81,8 @@ jobs:
           test -f xwinSDK/sdk/lib/um/x86/kernel32.lib
           test -f xwinSDK/crt/lib/x86/libcmt.lib
 
+          echo "Windows SDK checks passed."
+
       - name: Download DirectX 9 headers
         shell: bash
         run: |
@@ -113,7 +101,9 @@ jobs:
           cp "$(dirname "$header")"/* d3d9x_headers/
           test -f d3d9x_headers/d3dx9.h
 
-      - name: Build DLL
+          echo "DirectX 9 header checks passed."
+
+      - name: Build 32-bit DLL
         shell: bash
         run: |
           set -euxo pipefail
@@ -121,8 +111,8 @@ jobs:
           make clean
 
           make V=1 \
-            CXX=/usr/lib/llvm-18/bin/clang-cl \
-            LD=/usr/lib/llvm-18/bin/lld-link
+            CXX=/usr/lib/llvm-19/bin/clang-cl \
+            LD=/usr/lib/llvm-19/bin/lld-link
 
           test -s UnitXP_SP3.dll
           file UnitXP_SP3.dll
