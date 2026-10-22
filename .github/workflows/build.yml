@@ -1,91 +1,89 @@
 
-# --- Tools ---
-TRIPLE   = i686-pc-windows-msvc
-CXX      = clang-cl
-LD       = lld-link
+name: Build UnitXP SP3 v89
 
-# --- Dependencies ---
-XWIN_ROOT       = ./xwinSDK
-MINHOOK_DIR     = ./MinHook_134
-D3DX_INCLUDES   = ./d3d9x_headers
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
 
-# --- Project Files ---
-TARGET   = UnitXP_SP3.dll
-SRCS     = \
-            coffTimeDateStamp.cpp \
-            distanceBetween.cpp \
-            dllmain.cpp \
-            editCamera.cpp \
-            edit_CWorld_Intersect.cpp \
-            FPScap.cpp \
-            gameEvent.cpp \
-            gameQuit.cpp \
-            gameSocket.cpp \
-            inSight.cpp \
-            LuaDebug.cpp \
-            modernNameplateDistance.cpp \
-            notifyOS.cpp \
-            performanceProfiling.cpp \
-            polyfill.cpp \
-            sceneBegin_sceneEnd.cpp \
-            screenshot.cpp \
-            stb_image_write.cpp \
-            targeting.cpp \
-            timer.cpp \
-            utf8_to_utf16.cpp \
-            Vanilla1121_functions.cpp \
-            weather.cpp \
-            worldText.cpp \
-            $(MINHOOK_DIR)/src/buffer.c \
-            $(MINHOOK_DIR)/src/hde/hde32.c \
-            $(MINHOOK_DIR)/src/hook.c \
-            $(MINHOOK_DIR)/src/trampoline.c
+jobs:
+  build:
+    runs-on: windows-latest
 
-OBJS = $(patsubst %.cpp,%.obj,$(patsubst %.c,%.obj,$(SRCS)))
-LIBS = user32.lib kernel32.lib gdi32.lib libcmt.lib
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-# --- Compiler Flags ---
-CXXFLAGS = --target=$(TRIPLE) \
-            /O1 \
-            /MT /EHsc /W3 \
-            -Wno-microsoft-cast \
-            -Wno-unused-parameter \
-            -Wno-unused-variable \
-            -Wno-unused-function \
-            /nologo /hotpatch \
-            /arch:SSE2 /fp:precise \
-            /std:c++17 /Zc:__cplusplus \
-            /DWIN32_LEAN_AND_MEAN /D_X86_ /D_WIN32 \
-            /DNULL=0 \
-            /Z7 /GS /Gy \
-            -imsvc "$(XWIN_ROOT)/crt/include" \
-            -imsvc "$(XWIN_ROOT)/sdk/include/ucrt" \
-            -imsvc "$(XWIN_ROOT)/sdk/include/um" \
-            -imsvc "$(XWIN_ROOT)/sdk/include/shared" \
-            -imsvc "$(MINHOOK_DIR)/include" \
-            -imsvc "$(D3DX_INCLUDES)"
+      - name: Install LLVM and Make
+        shell: pwsh
+        run: |
+          choco install llvm make -y --no-progress
+          "C:\Program Files\LLVM" | Out-File $env:GITHUB_PATH -Append
+          where.exe clang-cl
+          where.exe lld-link
+          where.exe make
 
-# --- Linker Flags ---
-LDFLAGS = /NOLOGO /DLL /MACHINE:X86 /OPT:REF /OPT:ICF /SAFESEH \
-            /NXCOMPAT /FUNCTIONPADMIN \
-            /DEBUG /PDB:"$(TARGET:.dll=.pdb)" /ignore:4099 \
-            /LIBPATH:"$(XWIN_ROOT)/crt/lib/x86" \
-            /LIBPATH:"$(XWIN_ROOT)/sdk/lib/ucrt/x86" \
-            /LIBPATH:"$(XWIN_ROOT)/sdk/lib/um/x86"
+      - name: Prepare SDK dependencies
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -property installationPath
+          if (-not $vs) { throw "Visual Studio installation not found" }
 
-# --- Build Rules ---
-all: $(TARGET)
+          $vcRoot = Join-Path $vs "VC\Tools\MSVC"
+          $vc = Get-ChildItem $vcRoot -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1
 
-$(TARGET): $(OBJS)
-	$(LD) $(LDFLAGS) /OUT:$@ $(OBJS) $(LIBS)
+          $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          $sdkVersion = Get-ChildItem "$kitRoot\Include" -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty Name
 
-%.obj: %.cpp
-	$(CXX) $(CXXFLAGS) /c $< /Fo$@
+          $sdkInc = "$kitRoot\Include\$sdkVersion"
+          $sdkLib = "$kitRoot\Lib\$sdkVersion"
+          $root = Join-Path $PWD "xwinSDK"
 
-%.obj: %.c
-	$(CXX) $(CXXFLAGS) /c $< /Fo$@
+          New-Item -ItemType Directory -Force `
+            "$root\crt\include", "$root\crt\lib\x86",
+            "$root\sdk\include\ucrt", "$root\sdk\include\um",
+            "$root\sdk\include\shared", "$root\sdk\lib\ucrt\x86",
+            "$root\sdk\lib\um\x86" | Out-Null
 
-clean:
-	rm -f $(OBJS) *.dll *.lib *.exp *.pdb
+          Copy-Item "$($vc.FullName)\include\*" "$root\crt\include" -Recurse -Force
+          Copy-Item "$($vc.FullName)\lib\x86\*" "$root\crt\lib\x86" -Recurse -Force
+          Copy-Item "$sdkInc\ucrt\*" "$root\sdk\include\ucrt" -Recurse -Force
+          Copy-Item "$sdkInc\um\*" "$root\sdk\include\um" -Recurse -Force
+          Copy-Item "$sdkInc\shared\*" "$root\sdk\include\shared" -Recurse -Force
+          Copy-Item "$sdkLib\ucrt\x86\*" "$root\sdk\lib\ucrt\x86" -Recurse -Force
+          Copy-Item "$sdkLib\um\x86\*" "$root\sdk\lib\um\x86" -Recurse -Force
 
-.PHONY: all clean
+      - name: Prepare DirectX headers
+        shell: pwsh
+        run: |
+          $url = "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8"
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\d3dx.nupkg"
+          Expand-Archive "$env:RUNNER_TEMP\d3dx.nupkg" `
+            -DestinationPath "$env:RUNNER_TEMP\d3dx" -Force
+
+          $header = Get-ChildItem "$env:RUNNER_TEMP\d3dx" `
+            -Filter d3dx9.h -Recurse | Select-Object -First 1
+          if (-not $header) { throw "d3dx9.h not found" }
+
+          New-Item -ItemType Directory -Force d3d9x_headers | Out-Null
+          Copy-Item "$($header.DirectoryName)\*" d3d9x_headers -Recurse -Force
+
+      - name: Build DLL
+        shell: pwsh
+        run: |
+          make
+          if (-not (Test-Path UnitXP_SP3.dll)) {
+            throw "Build failed: DLL was not produced"
+          }
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnitXP-SP3-v89-build
+          path: UnitXP_SP3.dll
+          if-no-files-found: error
