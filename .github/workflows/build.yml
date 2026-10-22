@@ -1,0 +1,91 @@
+
+name: Build UnitXP SP3 v89
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install LLVM and GNU Make
+        shell: pwsh
+        run: |
+          choco install llvm make -y --no-progress
+          $env:Path += ";C:\Program Files\LLVM"
+          "C:\Program Files\LLVM" | Out-File $env:GITHUB_PATH -Append
+          where.exe clang-cl
+          where.exe lld-link
+
+      - name: Prepare SDK directories
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -property installationPath
+          if (-not $vs) { throw "Visual Studio installation not found" }
+
+          $vcRoot = Join-Path $vs "VC\Tools\MSVC"
+          $vc = Get-ChildItem $vcRoot -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1
+
+          $kitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+          $sdkVersion = Get-ChildItem "$kitRoot\Include" -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1 -ExpandProperty Name
+
+          $sdkInc = "$kitRoot\Include\$sdkVersion"
+          $sdkLib = "$kitRoot\Lib\$sdkVersion"
+          $root = Join-Path $PWD "xwinSDK"
+
+          New-Item -ItemType Directory -Force `
+            "$root\crt\include", "$root\crt\lib\x86",
+            "$root\sdk\include\ucrt", "$root\sdk\include\um",
+            "$root\sdk\include\shared", "$root\sdk\lib\ucrt\x86",
+            "$root\sdk\lib\um\x86" | Out-Null
+
+          Copy-Item "$($vc.FullName)\include\*" "$root\crt\include" -Recurse -Force
+          Copy-Item "$($vc.FullName)\lib\x86\*" "$root\crt\lib\x86" -Recurse -Force
+          Copy-Item "$sdkInc\ucrt\*" "$root\sdk\include\ucrt" -Recurse -Force
+          Copy-Item "$sdkInc\um\*" "$root\sdk\include\um" -Recurse -Force
+          Copy-Item "$sdkInc\shared\*" "$root\sdk\include\shared" -Recurse -Force
+          Copy-Item "$sdkLib\ucrt\x86\*" "$root\sdk\lib\ucrt\x86" -Recurse -Force
+          Copy-Item "$sdkLib\um\x86\*" "$root\sdk\lib\um\x86" -Recurse -Force
+
+      - name: Prepare legacy DirectX headers
+        shell: pwsh
+        run: |
+          $url = "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8"
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\d3dx.nupkg"
+          Expand-Archive "$env:RUNNER_TEMP\d3dx.nupkg" `
+            -DestinationPath "$env:RUNNER_TEMP\d3dx" -Force
+
+          $header = Get-ChildItem "$env:RUNNER_TEMP\d3dx" `
+            -Filter d3dx9.h -Recurse | Select-Object -First 1
+          if (-not $header) { throw "d3dx9.h not found in NuGet package" }
+
+          New-Item -ItemType Directory -Force d3d9x_headers | Out-Null
+          Copy-Item "$($header.DirectoryName)\*" d3d9x_headers -Recurse -Force
+
+      - name: Build 32-bit DLL
+        shell: pwsh
+        run: |
+          make
+          if (-not (Test-Path UnitXP_SP3.dll)) {
+            throw "Build failed: UnitXP_SP3.dll was not produced"
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnitXP-SP3-v89-build
+          path: |
+            UnitXP_SP3.dll
+            UnitXP_SP3.pdb
+          if-no-files-found: warn
