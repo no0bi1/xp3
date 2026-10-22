@@ -15,7 +15,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Clang and LLVM tools
+      - name: Inspect repository and MinHook
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          echo "Commit:"
+          git rev-parse HEAD
+
+          echo "Repository root:"
+          ls -la
+
+          echo "MinHook headers and sources:"
+          find . -type f \( \
+            -iname 'MinHook.h' -o \
+            -iname 'buffer.c' -o \
+            -iname 'hde32.c' -o \
+            -iname 'hook.c' -o \
+            -iname 'trampoline.c' \
+          \) -print
+
+          test -f Makefile
+          test -f coffTimeDateStamp.cpp
+
+          if [ ! -f MinHook_134/include/MinHook.h ]; then
+            echo "::error::MinHook.h is not at MinHook_134/include/MinHook.h."
+            echo "The listing above shows where the file exists in this checkout."
+            exit 1
+          fi
+
+      - name: Install Clang and LLVM
         shell: bash
         run: |
           set -euxo pipefail
@@ -29,10 +58,10 @@ jobs:
             curl \
             unzip
 
-          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
-
           test -x /usr/lib/llvm-18/bin/clang-cl
           test -x /usr/lib/llvm-18/bin/lld-link
+
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
 
           /usr/lib/llvm-18/bin/clang-cl --version
           /usr/lib/llvm-18/bin/lld-link --version
@@ -46,11 +75,10 @@ jobs:
           set -euxo pipefail
 
           cargo install xwin --locked
-
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/xwin" --help
 
-      - name: Download 32-bit Windows SDK
+      - name: Download x86 Windows SDK
         shell: bash
         run: |
           set -euxo pipefail
@@ -66,8 +94,6 @@ jobs:
           test -f xwinSDK/sdk/lib/ucrt/x86/ucrt.lib
           test -f xwinSDK/sdk/lib/um/x86/kernel32.lib
           test -f xwinSDK/crt/lib/x86/libcmt.lib
-
-          echo "Windows SDK checks passed."
 
       - name: Download DirectX 9 headers
         shell: bash
@@ -85,22 +111,9 @@ jobs:
           test -n "$header"
 
           cp "$(dirname "$header")"/* d3d9x_headers/
-
-          test -f d3d9x_headers/d3dx9.h
-          find d3d9x_headers -maxdepth 1 -type f -name 'd3dx9*' -print
-
-      - name: Validate source files
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          test -f Makefile
-          test -f coffTimeDateStamp.cpp
-          test -f MinHook_134/include/MinHook.h
-          test -f MinHook_134/src/hook.c
           test -f d3d9x_headers/d3dx9.h
 
-      - name: Compile and link DLL
+      - name: Build DLL
         shell: bash
         run: |
           set -euxo pipefail
@@ -114,7 +127,7 @@ jobs:
           test -s UnitXP_SP3.dll
           file UnitXP_SP3.dll
 
-      - name: Upload compiled DLL
+      - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
           name: UnitXP-SP3-v89-x86
