@@ -4,20 +4,21 @@ name: Build UnitXP SP3 v89
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout source
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install LLVM and build dependencies
+      - name: Install Clang and LLVM tools
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
 
           sudo apt-get update
           sudo apt-get install -y \
@@ -26,43 +27,38 @@ jobs:
             llvm-18 \
             make \
             curl \
-            unzip \
-            strace
+            unzip
 
-          # Provide the MSVC-compatible compiler command expected by Makefile.
-          sudo tee /usr/local/bin/clang-cl >/dev/null <<'EOF'
-          #!/usr/bin/env bash
-          exec /usr/bin/clang-18 --driver-mode=cl "$@"
-          EOF
-          sudo chmod +x /usr/local/bin/clang-cl
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
 
-          # Expose versioned LLVM linker tools under expected command names.
-          for tool in lld-link llvm-lib; do
-            if ! command -v "$tool" >/dev/null 2>&1; then
-              candidate="$(find /usr/bin -maxdepth 1 \
-                -type f -name "${tool}-*" -print | sort -V | tail -n 1)"
-              if [ -n "$candidate" ]; then
-                sudo ln -sf "$candidate" "/usr/local/bin/$tool"
-              fi
-            fi
-          done
+          test -x /usr/lib/llvm-18/bin/clang-cl
+          test -x /usr/lib/llvm-18/bin/lld-link
 
-          clang-cl --version
-          lld-link --version
-          make --version
+          /usr/lib/llvm-18/bin/clang-cl --version
+          /usr/lib/llvm-18/bin/lld-link --version
 
-      - name: Install Rust and xwin
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Download x86 Windows SDK
+      - name: Install xwin
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
 
-          rustup target add i686-pc-windows-msvc
           cargo install xwin --locked
 
-          xwin --accept-license --arch x86 splat \
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/xwin" --help
+
+      - name: Download 32-bit Windows SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          "$HOME/.cargo/bin/xwin" \
+            --accept-license \
+            --arch x86 \
+            splat \
             --output ./xwinSDK
 
           test -f xwinSDK/crt/include/vcruntime.h
@@ -71,12 +67,12 @@ jobs:
           test -f xwinSDK/sdk/lib/um/x86/kernel32.lib
           test -f xwinSDK/crt/lib/x86/libcmt.lib
 
-          echo "xwin SDK validation passed."
+          echo "Windows SDK checks passed."
 
       - name: Download DirectX 9 headers
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
 
           curl -fL \
             "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8" \
@@ -86,38 +82,39 @@ jobs:
           unzip -q /tmp/d3dx.nupkg -d /tmp/d3dx
 
           header="$(find /tmp/d3dx -name d3dx9.h -print -quit)"
-          if [ -z "$header" ]; then
-            echo "ERROR: d3dx9.h was not found in the package."
-            exit 1
-          fi
+          test -n "$header"
 
           cp "$(dirname "$header")"/* d3d9x_headers/
-          test -f d3d9x_headers/d3dx9.h
 
-      - name: Validate repository files
+          test -f d3d9x_headers/d3dx9.h
+          find d3d9x_headers -maxdepth 1 -type f -name 'd3dx9*' -print
+
+      - name: Validate source files
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
 
           test -f Makefile
           test -f coffTimeDateStamp.cpp
           test -f MinHook_134/include/MinHook.h
+          test -f MinHook_134/src/hook.c
           test -f d3d9x_headers/d3dx9.h
 
-          echo "Repository dependencies found."
-
-      - name: Build DLL
+      - name: Compile and link DLL
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
 
           make clean
-          make
+
+          make V=1 \
+            CXX=/usr/lib/llvm-18/bin/clang-cl \
+            LD=/usr/lib/llvm-18/bin/lld-link
 
           test -s UnitXP_SP3.dll
           file UnitXP_SP3.dll
 
-      - name: Upload DLL
+      - name: Upload compiled DLL
         uses: actions/upload-artifact@v4
         with:
           name: UnitXP-SP3-v89-x86
