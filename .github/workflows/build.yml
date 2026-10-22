@@ -44,8 +44,10 @@ jobs:
             curl \
             unzip
 
-          test -x /usr/lib/llvm-19/bin/clang
-          test -x /usr/lib/llvm-19/bin/lld-link
+          LLVM_BIN=/usr/lib/llvm-19/bin
+
+          test -x "$LLVM_BIN/clang"
+          test -x "$LLVM_BIN/lld-link"
 
           sudo tee /usr/local/bin/clang-cl >/dev/null <<'EOF'
           #!/usr/bin/env bash
@@ -53,10 +55,11 @@ jobs:
           EOF
           sudo chmod +x /usr/local/bin/clang-cl
 
-          echo "/usr/lib/llvm-19/bin" >> "$GITHUB_PATH"
+          export PATH="$LLVM_BIN:$PATH"
+          echo "$LLVM_BIN" >> "$GITHUB_PATH"
 
           clang-cl --version
-          lld-link --version
+          "$LLVM_BIN/lld-link" --version
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -113,6 +116,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
+          export PATH="/usr/lib/llvm-19/bin:$PATH"
 
           make clean
 
