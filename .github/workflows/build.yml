@@ -19,17 +19,41 @@ jobs:
         run: |
           choco install llvm make -y --no-progress
 
-          $llvm = "C:\Program Files\LLVM"
-          if (-not (Test-Path "$llvm\clang-cl.exe")) {
-            throw "clang-cl.exe was not found at $llvm"
+          $clang = Get-Command clang-cl.exe -ErrorAction SilentlyContinue
+          $linker = Get-Command lld-link.exe -ErrorAction SilentlyContinue
+
+          if (-not $clang -or -not $linker) {
+            $roots = @(
+              "C:\Program Files\LLVM",
+              "C:\Program Files (x86)\LLVM",
+              "C:\tools\llvm",
+              "C:\ProgramData\chocolatey\lib\llvm"
+            )
+
+            $clangFile = Get-ChildItem $roots -Filter clang-cl.exe `
+              -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+
+            $linkerFile = Get-ChildItem $roots -Filter lld-link.exe `
+              -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+
+            if (-not $clangFile) {
+              throw "Could not locate clang-cl.exe"
+            }
+
+            if (-not $linkerFile) {
+              throw "Could not locate lld-link.exe"
+            }
+
+            $llvmBin = $clangFile.DirectoryName
+            $env:Path = "$llvmBin;$env:Path"
+            $llvmBin | Out-File $env:GITHUB_PATH -Append
           }
 
-          $env:Path = "$llvm;$env:Path"
-          "$llvm" | Out-File $env:GITHUB_PATH -Append
-
-          where.exe clang-cl
-          where.exe lld-link
-          where.exe make
+          clang-cl.exe --version
+          lld-link.exe /?
+          make --version
 
       - name: Prepare SDK dependencies
         shell: pwsh
@@ -113,28 +137,36 @@ jobs:
           New-Item -ItemType Directory -Force d3d9x_headers | Out-Null
           Copy-Item "$($header.DirectoryName)\*" d3d9x_headers -Recurse -Force
 
-      - name: Verify Makefile fixes
+      - name: Verify Makefile
         shell: pwsh
         run: |
+          if (-not (Test-Path Makefile)) {
+            throw "Makefile not found at repository root"
+          }
+
           $makefile = Get-Content Makefile -Raw
 
           if ($makefile.Contains("-flto=thin")) {
-            throw "Remove -flto=thin from CXXFLAGS before building"
+            throw "Remove -flto=thin from Makefile"
           }
 
           if ($makefile.Contains("/Fo:`$@")) {
-            throw "Replace /Fo:`$@ with /Fo`$@ in both compilation rules"
+            throw "Change /Fo:`$@ to /Fo`$@ in both compilation rules"
           }
+
+          Write-Host "Makefile checks passed."
 
       - name: Build DLL
         shell: pwsh
         run: |
-          $env:Path = "C:\Program Files\LLVM;$env:Path"
           make
 
           if (-not (Test-Path UnitXP_SP3.dll)) {
             throw "Build failed: UnitXP_SP3.dll was not produced"
           }
+
+          Write-Host "DLL build completed."
+          Get-Item UnitXP_SP3.dll | Format-List Name, Length, LastWriteTime
 
       - name: Upload DLL
         uses: actions/upload-artifact@v4
