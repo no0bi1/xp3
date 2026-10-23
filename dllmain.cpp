@@ -1,4 +1,4 @@
-﻿// dllmain.cpp : Defines the entry point for the DLL application.
+// dllmain.cpp : Defines the entry point for the DLL application.
 
 #define _USE_MATH_DEFINES
 
@@ -307,6 +307,19 @@ int __fastcall detoured_UnitXP(void* L) {
                 prioritizeTargetNameplate = false;
             }
             lua_pushboolean(L, prioritizeTargetNameplate);
+            return 1;
+        }
+        // Added feature: hide the currently selected target's nameplate.
+        // This is separate from prioritizeTargetNameplate; neither setting replaces the other.
+        else if (cmd == "deprioritizeTargetNameplate") {
+            string subcmd{ lua_tostring(L, 2) };
+            if (subcmd == "enable") {
+                deprioritizeTargetNameplate = true;
+            }
+            else if (subcmd == "disable") {
+                deprioritizeTargetNameplate = false;
+            }
+            lua_pushboolean(L, deprioritizeTargetNameplate);
             return 1;
         }
         else if (cmd == "prioritizeMarkedNameplate") {
@@ -643,7 +656,7 @@ int __fastcall detoured_UnitXP(void* L) {
         else if (cmd == "gameLocale") {
             lua_pushnumber(L, vanilla1121_gameLocale());
             return 1;
-        } 
+        }
         else if (cmd == "screenshot") {
             string subcmd{ lua_tostring(L,2) };
             if (subcmd == "perfect") {
