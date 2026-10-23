@@ -50,7 +50,12 @@ static int shouldHaveNameplate(void* voidUnit)
     uint32_t unit = reinterpret_cast<uint32_t>(voidUnit);
 
     uint64_t guidUnderNameplate = vanilla1121_unitGUID(unit);
-    uint64_t targetGUID = vanilla1121_unitGUID("target");
+    uint64_t targetGUID = 0;
+if (deprioritizeTargetNameplate ||
+    prioritizeMarkedNameplate || prioritizeTargetNameplate)
+{
+    targetGUID = vanilla1121_unitGUID("target");
+}
 
     // NEW OPTION:
     // Hide only the currently selected target's nameplate.
