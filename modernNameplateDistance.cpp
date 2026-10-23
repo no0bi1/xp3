@@ -141,22 +141,19 @@ if (deprioritizeTargetNameplate ||
     }
 
     // Existing combat filter.
-    if (nameplateCombatFilter)
-    {
-        bool fullHP =
-            vanilla1121_unitCurrentHP(unit) >=
-            vanilla1121_unitMaximumHP(unit);
+    if (nameplateCombatFilter) {
+    uint32_t unit = reinterpret_cast<uint32_t>(voidUnit);
 
-        bool inCombat =
-            vanilla1121_unitInCombat(unit) ||
-            (vanilla1121_objectType(unit) == OBJECT_TYPE_Player &&
-             vanilla1121_unitCanBeAttacked(unit) == 1);
+    bool fullHP =
+        vanilla1121_unitCurrentHP(unit) >=
+        vanilla1121_unitMaximumHP(unit);
 
-        if (fullHP && !inCombat)
-        {
-            return 0;
-        }
+    bool inCombat = vanilla1121_unitInCombat(unit);
+
+    if (fullHP && !inCombat) {
+        return 0;
     }
+}
 
     // Existing behavior: show nearby units in combat.
     const float nearPlayerDistance = 8.0f;
