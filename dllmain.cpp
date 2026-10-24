@@ -322,6 +322,17 @@ int __fastcall detoured_UnitXP(void* L) {
             lua_pushboolean(L, deprioritizeTargetNameplate);
             return 1;
         }
+        else if (cmd == "deprioritizeTargetNameplateDelay") {
+            if (lua_gettop(L) >= 2 && lua_isnumber(L, 2)) {
+                double seconds = lua_tonumber(L, 2);
+                if (seconds < 0.0) seconds = 0.0;
+                else if (seconds > 60.0) seconds = 60.0;
+                deprioritizeTargetNameplateDelayMs =
+                    static_cast<unsigned int>(seconds) * 1000;
+            }
+            lua_pushnumber(L, deprioritizeTargetNameplateDelayMs / 1000);
+            return 1;
+        }
         else if (cmd == "prioritizeMarkedNameplate") {
             string subcmd{ lua_tostring(L, 2) };
             if (subcmd == "enable") {
