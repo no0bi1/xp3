@@ -335,6 +335,25 @@ local function UnitXP_SP3_setDeprioritizeTargetNameplate(enable)
     return result;
 end
 
+-- Configure the delay before hiding the selected target's nameplate.
+local function UnitXP_SP3_setDeprioritizeTargetNameplateDelay(seconds)
+    if type(seconds) ~= "number" then seconds = 3; end
+    if seconds < 0 then seconds = 0;
+    elseif seconds > 60 then seconds = 60; end
+    local test, result = pcall(UnitXP, "deprioritizeTargetNameplateDelay", seconds);
+    if not test or type(result) ~= "number" then
+        if not skipUpdateMessage then
+            skipUpdateMessage = true;
+            UnitXP_SP3_Print(
+                'UnitXP_SP3.dll failed to execute "deprioritizeTargetNameplateDelay". ' ..
+                'The DLL must support this command.');
+        end
+        return UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] or 3;
+    end
+    UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] = result;
+    return result;
+end
+
 local function UnitXP_SP3_setPrioritizeMarkedNameplate(enable)
     local test, result = pcall(UnitXP, "prioritizeMarkedNameplate", enable);
 
@@ -610,6 +629,12 @@ function UnitXP_SP3_reloadConfig()
         end
     end
 
+    local targetHideDelay =
+        UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] or 3;
+    targetHideDelay =
+        UnitXP_SP3_setDeprioritizeTargetNameplateDelay(targetHideDelay);
+    xpsp3_editBox_deprioritizeTargetNameplateDelay:SetNumber(targetHideDelay);
+
     if UnitXP_SP3_Addon["prioritizeMarkedNameplate"] then
         UnitXP_SP3_setPrioritizeMarkedNameplate("enable");
         xpsp3_checkButton_prioritizeMarkedNameplate:SetChecked(true);
@@ -693,6 +718,7 @@ function UnitXP_SP3_UI_OnClick(widget)
     xpsp3_editBox_combatTextSP3_fontSize:ClearFocus();
     xpsp3_editBox_combatTextSP3_nameplateHeight:ClearFocus();
     xpsp3_editBox_combatTextSP3_fontName:ClearFocus();
+    xpsp3_editBox_deprioritizeTargetNameplateDelay:ClearFocus();
 
     skipUpdateMessage = false;
 
@@ -712,6 +738,13 @@ function UnitXP_SP3_UI_OnClick(widget)
         end
         if string.find(widget:GetName(), "_combatTextSP3_fontName") then
             UnitXP_SP3_combatTextSP3_fontName(widget:GetText());
+        end
+        if string.find(widget:GetName(), "_deprioritizeTargetNameplateDelay") then
+            local seconds = widget:GetNumber();
+            if seconds < 0 then seconds = 0;
+            elseif seconds > 60 then seconds = 60; end
+            UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] =
+                UnitXP_SP3_setDeprioritizeTargetNameplateDelay(seconds);
         end
     end
 
@@ -916,6 +949,7 @@ function UnitXP_SP3_OnEvent(event)
             UnitXP_SP3_Addon["modernNameplateDistance"] = true;
             UnitXP_SP3_Addon["prioritizeTargetNameplate"] = false;
             UnitXP_SP3_Addon["deprioritizeTargetNameplate"] = false;
+            UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] = 3;
             UnitXP_SP3_Addon["prioritizeMarkedNameplate"] = false;
             UnitXP_SP3_Addon["nameplateCombatFilter"] = false;
             UnitXP_SP3_Addon["showInCombatNameplatesNearPlayer"] = false;
@@ -957,6 +991,9 @@ function UnitXP_SP3_OnEvent(event)
             -- Add the new option without resetting existing saved settings.
             if UnitXP_SP3_Addon["deprioritizeTargetNameplate"] == nil then
                 UnitXP_SP3_Addon["deprioritizeTargetNameplate"] = false;
+            end
+            if UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] == nil then
+                UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] = 3;
             end
         end
 
