@@ -33,7 +33,8 @@ bool showInCombatNameplatesNearPlayer = false;
 bool hideCritterNameplate = true;
 
 static bool nameplatesHasMarkOnThem = false;
-
+static uint64_t delayedHideTargetGUID = 0;
+static DWORD targetSelectedTick = 0;
 
 // Return values:
 // -1 = error
@@ -57,16 +58,26 @@ if (deprioritizeTargetNameplate ||
     targetGUID = vanilla1121_unitGUID("target");
 }
 
-    // NEW OPTION:
-    // Hide only the currently selected target's nameplate.
-    // Other units continue through the existing filtering logic.
-    // This check takes precedence over target/mark prioritization.
-    if (deprioritizeTargetNameplate &&
-        targetGUID > 0 &&
-        guidUnderNameplate == targetGUID)
+    if (deprioritizeTargetNameplate && targetGUID > 0)
+{
+    // Start or restart the timer when the target changes.
+    if (targetGUID != delayedHideTargetGUID)
+    {
+        delayedHideTargetGUID = targetGUID;
+        targetSelectedTick = GetTickCount();
+    }
+
+    // Only hide the current target's nameplate after 3 seconds.
+    if (guidUnderNameplate == targetGUID &&
+        (DWORD)(GetTickCount() - targetSelectedTick) >= 3000)
     {
         return 0;
     }
+}
+else
+{
+    delayedHideTargetGUID = 0;
+}
 
     // Existing target and marked-nameplate prioritization.
     if (prioritizeMarkedNameplate || prioritizeTargetNameplate)
