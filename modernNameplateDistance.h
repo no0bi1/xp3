@@ -17,6 +17,7 @@ extern REMOVENAMEPLATE p_removeNameplate;
 extern bool modernNameplateDistance;
 extern bool prioritizeTargetNameplate;
 extern bool deprioritizeTargetNameplate; // Added: hide the selected target's nameplate
+extern unsigned int deprioritizeTargetNameplateDelayMs;
 extern bool prioritizeMarkedNameplate;
 extern bool nameplateCombatFilter;
 extern bool showInCombatNameplatesNearPlayer;

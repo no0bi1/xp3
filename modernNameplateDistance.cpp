@@ -27,6 +27,7 @@ REMOVENAMEPLATE p_removeNameplate =
 bool modernNameplateDistance = true;
 bool prioritizeTargetNameplate = false;
 bool deprioritizeTargetNameplate = false;
+unsigned int deprioritizeTargetNameplateDelayMs = 3000;
 bool prioritizeMarkedNameplate = false;
 bool nameplateCombatFilter = false;
 bool showInCombatNameplatesNearPlayer = false;
@@ -67,9 +68,10 @@ if (deprioritizeTargetNameplate ||
         targetSelectedTick = GetTickCount();
     }
 
-    // Only hide the current target's nameplate after 3 seconds.
+    // Hide the current target's nameplate after the configured delay.
     if (guidUnderNameplate == targetGUID &&
-        (DWORD)(GetTickCount() - targetSelectedTick) >= 3000)
+        (DWORD)(GetTickCount() - targetSelectedTick) >=
+            deprioritizeTargetNameplateDelayMs)
     {
         return 0;
     }
