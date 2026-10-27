@@ -23,6 +23,13 @@ RENDERWORLD p_original_renderWorld = NULL;
 REMOVENAMEPLATE p_removeNameplate =
     reinterpret_cast<REMOVENAMEPLATE>(0x608A10);
 
+// Per-frame update of the nameplate frame object (vtable slot 14 of the
+// nameplate frame class at 0x81de50). Takes dt as a float, ret 4.
+NAMEPLATE_UPDATE p_nameplateUpdate =
+    reinterpret_cast<NAMEPLATE_UPDATE>(0x7cb950);
+
+NAMEPLATE_UPDATE p_original_nameplateUpdate = NULL;
+
 // Nameplate options.
 bool modernNameplateDistance = true;
 bool prioritizeTargetNameplate = false;
@@ -36,6 +43,11 @@ bool hideCritterNameplate = true;
 static bool nameplatesHasMarkOnThem = false;
 static uint64_t delayedHideTargetGUID = 0;
 static DWORD targetSelectedTick = 0;
+
+// Fade state for the delayed target nameplate.
+// fadingGUID == 0 means no fade is active.
+static uint64_t fadingGUID = 0;
+static uint32_t fadingAlpha = 255; // 0-255
 
 // Apply the target-nameplate delay only while the player is in combat
 // and at least two attackable units that are themselves in combat are present.
@@ -126,12 +138,24 @@ static int shouldHaveNameplate(void* voidUnit)
                 targetSelectedTick = GetTickCount();
             }
 
+            DWORD elapsed = GetTickCount() - targetSelectedTick;
+
             // Keep the target plate only until the configured delay expires.
-            if ((DWORD)(GetTickCount() - targetSelectedTick) >=
-                deprioritizeTargetNameplateDelayMs)
+            if (elapsed >= deprioritizeTargetNameplateDelayMs)
             {
+                fadingGUID = 0;
                 return 0;
             }
+
+            // Fade across the whole configured delay:
+            // full alpha at the start, zero alpha as the delay expires.
+            float fade = 1.0f - static_cast<float>(elapsed) /
+                static_cast<float>(deprioritizeTargetNameplateDelayMs);
+            if (fade < 0.0f) fade = 0.0f;
+            if (fade > 1.0f) fade = 1.0f;
+
+            fadingGUID = targetGUID;
+            fadingAlpha = static_cast<uint32_t>(fade * 255.0f);
 
             // Keep the target nameplate visible until the delay expires.
             return 1;
@@ -139,6 +163,7 @@ static int shouldHaveNameplate(void* voidUnit)
 
         // Outside multi-enemy combat, hide the target immediately.
         delayedHideTargetGUID = 0;
+        fadingGUID = 0;
         return 0;
     }
 
@@ -307,6 +332,10 @@ static void refreshMarkStatus()
 
 int __fastcall detoured_renderWorld(void* self, void* ignored)
 {
+    // Reset the fade each frame. shouldHaveNameplate() below sets it again
+    // while the delayed target nameplate is still fading.
+    fadingGUID = 0;
+
     if (self && modernNameplateDistance)
     {
         if (prioritizeMarkedNameplate)
@@ -409,4 +438,32 @@ void __fastcall detoured_addNameplate(
 
     // Preserve the original nameplate creation call.
     return p_original_addNameplate(self, unknown1, unknown2);
+}
+
+
+// Runs the engine's own per-frame nameplate update, then overrides alpha for
+// the delayed target nameplate. The engine resets alpha to 0xFF/0x7F whenever
+// it differs, so the override has to be applied after the original every frame.
+void __fastcall detoured_nameplateUpdate(void* self, void* ignored, float dt)
+{
+    p_original_nameplateUpdate(self, dt);
+
+    if (self && fadingGUID != 0 && fadingAlpha < 255)
+    {
+        uint32_t frame = reinterpret_cast<uint32_t>(self);
+        if ((frame & 1) != 0)
+        {
+            return;
+        }
+
+        uint64_t guid = *reinterpret_cast<uint64_t*>(frame + 0x4e8);
+        if (guid == fadingGUID)
+        {
+            // Vtable slot 10 is SetAlpha(uint8), __thiscall.
+            typedef void(__thiscall* SETALPHA)(void*, uint32_t);
+            void** vtable = *reinterpret_cast<void***>(self);
+            auto setAlpha = reinterpret_cast<SETALPHA>(vtable[10]);
+            setAlpha(self, fadingAlpha);
+        }
+    }
 }
