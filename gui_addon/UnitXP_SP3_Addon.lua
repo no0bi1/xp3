@@ -138,6 +138,26 @@ local function UnitXP_SP3_setModernNameplateDistance(enable)
     return result;
 end
 
+local function UnitXP_SP3_setNameplateRange(yards)
+    yards = tonumber(yards) or 20;
+    if yards < 1 then yards = 1;
+    elseif yards > 41 then yards = 41; end
+    yards = math.floor(yards + 0.5);
+
+    local test, result = pcall(UnitXP, "nameplateRange", yards);
+    if not test then
+        if not skipUpdateMessage then
+            skipUpdateMessage = true;
+            UnitXP_SP3_Print(
+                'UnitXP_SP3.dll failed to execute "nameplateRange". Update UnitXP_SP3.dll to support custom nameplate range.');
+        end
+        return UnitXP_SP3_Addon["nameplateRange"] or 20;
+    end
+
+    UnitXP_SP3_Addon["nameplateRange"] = result;
+    return result;
+end
+
 local function UnitXP_SP3_setHideEXPtext(enable)
     local test, result = pcall(UnitXP, "hideEXPtext", enable);
 
@@ -567,6 +587,9 @@ function UnitXP_SP3_reloadConfig()
         xpsp3_checkButton_modernNameplate:SetChecked(false);
     end
 
+    local nameplateRange = UnitXP_SP3_setNameplateRange(UnitXP_SP3_Addon["nameplateRange"] or 20);
+    xpsp3_editBox_nameplateRange:SetNumber(nameplateRange);
+
     if UnitXP_SP3_Addon["combatTextSP3"] then
         UnitXP_SP3_combatTextSP3("enable");
         xpsp3_checkButton_combatTextSP3:SetChecked(true);
@@ -724,6 +747,7 @@ local function UnitXP_SP3_freshDefaults()
     t["cameraHorizontalDisplacement"] = 0.0;
     t["cameraPinHeight"] = false;
     t["modernNameplateDistance"] = true;
+    t["nameplateRange"] = 20;
     t["prioritizeTargetNameplate"] = false;
     t["deprioritizeTargetNameplate"] = false;
     t["deprioritizeTargetNameplateDelay"] = 3;
@@ -842,6 +866,14 @@ function UnitXP_SP3_UI_OnClick(widget)
             elseif seconds > 60 then seconds = 60; end
             UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] =
                 UnitXP_SP3_setDeprioritizeTargetNameplateDelay(seconds);
+        end
+        if string.find(widget:GetName(), "_nameplateRange") then
+            local yards = widget:GetNumber();
+            if yards < 1 then yards = 1;
+            elseif yards > 41 then yards = 41; end
+            yards = math.floor(yards + 0.5);
+            UnitXP_SP3_Addon["nameplateRange"] = UnitXP_SP3_setNameplateRange(yards);
+            widget:SetNumber(UnitXP_SP3_Addon["nameplateRange"]);
         end
     end
 
@@ -1047,6 +1079,7 @@ function UnitXP_SP3_OnEvent(event)
             UnitXP_SP3_Addon["cameraHorizontalDisplacement"] = 0.0;
             UnitXP_SP3_Addon["cameraPinHeight"] = false;
             UnitXP_SP3_Addon["modernNameplateDistance"] = true;
+            UnitXP_SP3_Addon["nameplateRange"] = 20;
             UnitXP_SP3_Addon["prioritizeTargetNameplate"] = false;
             UnitXP_SP3_Addon["deprioritizeTargetNameplate"] = false;
             UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] = 3;
@@ -1094,6 +1127,9 @@ function UnitXP_SP3_OnEvent(event)
             end
             if UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] == nil then
                 UnitXP_SP3_Addon["deprioritizeTargetNameplateDelay"] = 3;
+            end
+            if UnitXP_SP3_Addon["nameplateRange"] == nil then
+                UnitXP_SP3_Addon["nameplateRange"] = 20;
             end
         -- Default combat text font is now Blizzard's Friz Quadrata (loaded from the MPQ by the DLL).
         if UnitXP_SP3_Addon["combatTextSP3_fontName"] == nil
