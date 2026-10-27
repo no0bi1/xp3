@@ -1,0 +1,136 @@
+
+name: Build UnitXP SP3 v89
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate source files
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -f Makefile
+          test -f coffTimeDateStamp.cpp
+          test -f MinHook_134/include/MinHook.h
+          test -f MinHook_134/src/buffer.c
+          test -f MinHook_134/src/hde/hde32.c
+          test -f MinHook_134/src/hook.c
+          test -f MinHook_134/src/trampoline.c
+
+          echo "Source validation passed."
+
+      - name: Install Clang 19 and LLVM tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-19 \
+            lld-19 \
+            llvm-19 \
+            make \
+            curl \
+            unzip
+
+          LLVM_BIN=/usr/lib/llvm-19/bin
+
+          test -x "$LLVM_BIN/clang"
+          test -x "$LLVM_BIN/lld-link"
+
+          sudo tee /usr/local/bin/clang-cl >/dev/null <<'EOF'
+          #!/usr/bin/env bash
+          exec /usr/lib/llvm-19/bin/clang --driver-mode=cl "$@"
+          EOF
+          sudo chmod +x /usr/local/bin/clang-cl
+
+          export PATH="$LLVM_BIN:$PATH"
+          echo "$LLVM_BIN" >> "$GITHUB_PATH"
+
+          clang-cl --version
+          "$LLVM_BIN/lld-link" --version
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install xwin
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cargo install xwin --locked
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/xwin" --help
+
+      - name: Download x86 Windows SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          "$HOME/.cargo/bin/xwin" \
+            --accept-license \
+            --arch x86 \
+            splat \
+            --output ./xwinSDK
+
+          test -f xwinSDK/crt/include/vcruntime.h
+          test -f xwinSDK/sdk/include/ucrt/stdlib.h
+          test -f xwinSDK/sdk/lib/ucrt/x86/ucrt.lib
+          test -f xwinSDK/sdk/lib/um/x86/kernel32.lib
+          test -f xwinSDK/crt/lib/x86/libcmt.lib
+
+          echo "Windows SDK validation passed."
+
+      - name: Download DirectX 9 headers
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          curl -fL \
+            "https://www.nuget.org/api/v2/package/Microsoft.DXSDK.D3DX/9.29.952.8" \
+            -o /tmp/d3dx.nupkg
+
+          mkdir -p /tmp/d3dx d3d9x_headers
+          unzip -q /tmp/d3dx.nupkg -d /tmp/d3dx
+
+          header="$(find /tmp/d3dx -name d3dx9.h -print -quit)"
+          test -n "$header"
+
+          cp "$(dirname "$header")"/* d3d9x_headers/
+          test -f d3d9x_headers/d3dx9.h
+
+          echo "DirectX 9 headers validated."
+
+      - name: Build 32-bit DLL
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          export PATH="/usr/lib/llvm-19/bin:$PATH"
+
+          make clean
+
+          make V=1 \
+            CXX=clang-cl \
+            LD=/usr/lib/llvm-19/bin/lld-link
+
+          test -s UnitXP_SP3.dll
+          file UnitXP_SP3.dll
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnitXP-SP3-v89-x86
+          path: UnitXP_SP3.dll
+          if-no-files-found: error
