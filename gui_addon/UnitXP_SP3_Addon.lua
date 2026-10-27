@@ -840,6 +840,7 @@ function UnitXP_SP3_UI_OnClick(widget)
     xpsp3_editBox_combatTextSP3_nameplateHeight:ClearFocus();
     xpsp3_editBox_combatTextSP3_fontName:ClearFocus();
     xpsp3_editBox_deprioritizeTargetNameplateDelay:ClearFocus();
+    xpsp3_editBox_nameplateRange:ClearFocus();
 
     skipUpdateMessage = false;
 
