@@ -212,6 +212,37 @@
           		</OnLeave>
 				</Scripts>
 			</CheckButton>
+            <FontString name="xpsp3_fontString_nameplateRange" inherits="GameFontNormal" text="Range (yards):" justifyH="LEFT" justifyV="TOP">
+                <Size x="115" y="20"/>
+                <Anchors><Anchor point="TOPLEFT" relativeTo="xpsp3Frame"><Offset><AbsDimension x="205" y="-70"/></Offset></Anchor></Anchors>
+            </FontString>
+            <EditBox name="xpsp3_editBox_nameplateRange" letters="2" autoFocus="false" numeric="true">
+                <Size x="42" y="32"/>
+                <Anchors><Anchor point="TOPLEFT" relativeTo="xpsp3Frame"><Offset><AbsDimension x="310" y="-63"/></Offset></Anchor></Anchors>
+                <Layers><Layer level="BACKGROUND">
+                    <Texture file="Interface\ChatFrame\UI-ChatInputBorder-Left">
+                        <Size x="30" y="32"/><Anchors><Anchor point="LEFT"><Offset x="-17" y="0"/></Anchor></Anchors>
+                        <TexCoords left="0" right="0.12" top="0" bottom="1.0"/>
+                    </Texture>
+                    <Texture file="Interface\ChatFrame\UI-ChatInputBorder-Right">
+                        <Size x="30" y="32"/><Anchors><Anchor point="RIGHT"><Offset x="-7" y="0"/></Anchor></Anchors>
+                        <TexCoords left="0.88" right="1.0" top="0" bottom="1.0"/>
+                    </Texture>
+                </Layer></Layers>
+                <Scripts>
+                    <OnEditFocusGained>
+                        xpsp3tooltip:SetOwner(this, "ANCHOR_LEFT");
+                        xpsp3tooltip:SetText("Native Nameplate Range");
+                        xpsp3tooltip:AddLine("Sets the client's nameplate distance in yards.", 1, 1, 1);
+                        xpsp3tooltip:AddLine("Valid range: 1 to 41 yards. Press Enter to apply.", 1, 1, 1);
+                        xpsp3tooltip:AddLine("Keep Proper Nameplates Occlusion enabled for XP3's visibility checks.", 1, 1, 1);
+                        xpsp3tooltip:Show();
+                    </OnEditFocusGained>
+                    <OnEditFocusLost>xpsp3tooltip:Hide();</OnEditFocusLost>
+                    <OnEnterPressed>UnitXP_SP3_UI_OnClick(this);</OnEnterPressed>
+                </Scripts>
+                <FontString inherits="ChatFontNormal"/>
+            </EditBox>
 			<CheckButton name="xpsp3_checkButton_prioritizeTargetNameplate" inherits="UICheckButtonTemplate">
 				<Anchors>
 					<Anchor point="TOPLEFT">
