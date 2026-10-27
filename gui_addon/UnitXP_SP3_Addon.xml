@@ -216,11 +216,11 @@
                 <Size x="50" y="32" />
                 <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="205" y="-70"/></Offset></Anchor></Anchors>
                 <Layers><Layer level="BACKGROUND">
-                    <Texture file="Interface\\ChatFrame\\UI-ChatInputBorder-Left">
+                    <Texture file="Interface\ChatFrame\UI-ChatInputBorder-Left">
                         <Size x="30" y="32" /><Anchors><Anchor point="LEFT"><Offset x="-17" y="0" /></Anchor></Anchors>
                         <TexCoords left="0" right="0.12" top="0" bottom="1.0"/>
                     </Texture>
-                    <Texture file="Interface\\ChatFrame\\UI-ChatInputBorder-Right">
+                    <Texture file="Interface\ChatFrame\UI-ChatInputBorder-Right">
                         <Size x="30" y="32" /><Anchors><Anchor point="RIGHT"><Offset x="-7" y="0" /></Anchor></Anchors>
                         <TexCoords left="0.88" right="1.0" top="0" bottom="1.0"/>
                     </Texture>
