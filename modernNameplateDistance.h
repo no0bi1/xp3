@@ -25,3 +25,9 @@ extern bool hideCritterNameplate;
 
 int __fastcall detoured_renderWorld(void* self, void* ignored);
 void __fastcall detoured_addNameplate(void* self, void* ignored, void* unknown1, void* unknown2);
+
+// Per-frame update of the nameplate frame object (0x7cb950), used to apply the target-nameplate fade.
+typedef void(__thiscall* NAMEPLATE_UPDATE)(void*, float);
+extern NAMEPLATE_UPDATE p_nameplateUpdate;
+extern NAMEPLATE_UPDATE p_original_nameplateUpdate;
+void __fastcall detoured_nameplateUpdate(void* self, void* ignored, float dt);
