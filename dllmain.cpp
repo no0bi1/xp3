@@ -3,6 +3,7 @@
 #define _USE_MATH_DEFINES
 
 #include <cmath>
+#include <algorithm>
 #include <string>
 #include <sstream>
 #include <fstream>
@@ -285,6 +286,23 @@ int __fastcall detoured_UnitXP(void* L) {
                 modernNameplateDistance = false;
             }
             lua_pushboolean(L, modernNameplateDistance);
+            return 1;
+        }
+
+        // The client stores the squared native nameplate distance at this address.
+        // The addon applies this after client startup, once CRT initialization is complete.
+        else if (cmd == "nameplateRange") {
+            constexpr uintptr_t nameplateRangeSquaredAddress = 0x00C4D988;
+            if (lua_gettop(L) >= 2 && lua_isnumber(L, 2)) {
+                double yards = lua_tonumber(L, 2);
+                if (std::isfinite(yards)) {
+                    yards = (std::max)(1.0, (std::min)(41.0, yards));
+                    *reinterpret_cast<volatile float*>(nameplateRangeSquaredAddress) =
+                        static_cast<float>(yards * yards);
+                }
+            }
+            lua_pushnumber(L, std::sqrt(static_cast<double>(
+                *reinterpret_cast<volatile float*>(nameplateRangeSquaredAddress))));
             return 1;
         }
         else if (cmd == "hideCritterNameplate") {
