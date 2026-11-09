@@ -8,6 +8,7 @@
 #include <sstream>
 #include <fstream>
 #include <limits>
+#include <cstdlib>
 
 #include <Windows.h>
 
@@ -164,6 +165,36 @@ int __fastcall detoured_UnitXP(void* L) {
         }
         else if (cmd == "target") {
             string subcmd{ lua_tostring(L, 2) };
+            if (subcmd == "guid" && lua_gettop(L) >= 3 && lua_isstring(L, 3)) {
+                // Target a visible unit by its 64-bit GUID returned from scan rares.
+                const char* guidText = lua_tostring(L, 3);
+                char* end = nullptr;
+                unsigned long long parsed = std::strtoull(guidText, &end, 0);
+                if (guidText == end || end == nullptr || *end != '\0' || parsed == 0) {
+                    lua_pushboolean(L, false);
+                    return 1;
+                }
+
+                uint64_t guid = static_cast<uint64_t>(parsed);
+                uint32_t unit = vanilla1121_getVisiableObject(guid);
+                if (unit == 0 ||
+                    vanilla1121_objectType(unit) != OBJECT_TYPE_Unit ||
+                    vanilla1121_unitIsDead(unit) != 0) {
+                    lua_pushboolean(L, false);
+                    return 1;
+                }
+
+                int classification = vanilla1121_unitClassification(unit);
+                if (classification != CLASSIFICATION_RARE &&
+                    classification != CLASSIFICATION_RARE_ELITE) {
+                    lua_pushboolean(L, false);
+                    return 1;
+                }
+
+                vanilla1121_target(guid);
+                lua_pushboolean(L, true);
+                return 1;
+            }
             if (subcmd == "nearestEnemy") {
                 lua_pushboolean(L, targetNearestEnemy(FLT_MAX));
                 return 1;
