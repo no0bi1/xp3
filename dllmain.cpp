@@ -167,10 +167,10 @@ int __fastcall detoured_UnitXP(void* L) {
             string subcmd{ lua_tostring(L, 2) };
             if (subcmd == "guid" && lua_gettop(L) >= 3 && lua_isstring(L, 3)) {
                 // Target a visible unit by its 64-bit GUID returned from scan rares.
-                const char* guidText = lua_tostring(L, 3);
+                const std::string guidText = lua_tostring(L, 3);
                 char* end = nullptr;
-                unsigned long long parsed = std::strtoull(guidText, &end, 0);
-                if (guidText == end || end == nullptr || *end != '\0' || parsed == 0) {
+                unsigned long long parsed = std::strtoull(guidText.c_str(), &end, 0);
+                if (end == guidText.c_str() || *end != '\0' || parsed == 0) {
                     lua_pushboolean(L, false);
                     return 1;
                 }
