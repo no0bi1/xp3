@@ -129,6 +129,14 @@ int __fastcall detoured_UnitXP(void* L) {
                 return 1;
             }
         }
+        else if (cmd == "scan") {
+            string subcmd{ lua_tostring(L, 2) };
+            if (subcmd == "rares") {
+                return scanRareUnits(L);
+            }
+            lua_pushnil(L);
+            return 1;
+        }
         else if (cmd == "onEvent") {
             string subcmd{ lua_tostring(L, 2) };
             if (subcmd == "PLAYER_ENTERING_WORLD") {
@@ -197,9 +205,6 @@ int __fastcall detoured_UnitXP(void* L) {
             if (subcmd == "mostHP") {
                 lua_pushboolean(L, targetEnemyWithMostHP(targetingFarRange));
                 return 1;
-            }
-            if (subcmd == "rares") {
-                return scanRareUnits(L);
             }
             if (subcmd == "worldBoss") {
                 lua_pushboolean(L, targetWorldBoss(FLT_MAX));
