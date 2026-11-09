@@ -14,6 +14,108 @@ bool targetingInCombatFilter = true;
 float targetingFarRange = 41.0f;
 
 
+
+int scanRareUnits(void* L) {
+    struct rare_scan_entry {
+        uint64_t GUID;
+        float distance;
+        int classification;
+    };
+
+    vector<rare_scan_entry> rares;
+
+    // The object manager contains the client's currently visible objects.
+    uint32_t objects = *reinterpret_cast<uint32_t*>(0xb41414);
+    if (objects == 0) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    uint32_t objectList = *reinterpret_cast<uint32_t*>(objects + 0xa4);
+    if (objectList == 0) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    uint32_t i = *reinterpret_cast<uint32_t*>(objects + 0xac);
+    uint64_t playerGUID = vanilla1121_unitGUID("player");
+    uint32_t player = playerGUID ? vanilla1121_getVisiableObject(playerGUID) : 0;
+
+    if (player == 0) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    // Guard against a corrupted/cyclic object list.
+    size_t scannedObjects = 0;
+    while (i != 0 && (i & 1) == 0 && scannedObjects++ < 10000) {
+        uint32_t next = *reinterpret_cast<uint32_t*>(objectList + i + 4);
+        int type = vanilla1121_objectType(i);
+
+        // Classification is meaningful for units; do not include player units.
+        if (type == OBJECT_TYPE_Unit) {
+            int classification = vanilla1121_unitClassification(i);
+            if ((classification == CLASSIFICATION_RARE ||
+                 classification == CLASSIFICATION_RARE_ELITE) &&
+                vanilla1121_unitIsDead(i) == 0) {
+                uint64_t guid = vanilla1121_unitGUID(i);
+                if (guid != 0) {
+                    float distance = UnitXP_distanceBetween(
+                        reinterpret_cast<void*>(player),
+                        reinterpret_cast<void*>(i),
+                        METER_RANGED);
+
+                    rare_scan_entry entry{};
+                    entry.GUID = guid;
+                    entry.distance = distance;
+                    entry.classification = classification;
+                    rares.push_back(entry);
+                }
+            }
+        }
+
+        i = next;
+    }
+
+    sort(rares.begin(), rares.end(),
+        [](const rare_scan_entry& a, const rare_scan_entry& b) {
+            if (a.distance < 0.0f) return false;
+            if (b.distance < 0.0f) return true;
+            return a.distance < b.distance;
+        });
+
+    // Return an array of { guid = "0x...", distance = yards,
+    // classification = "rare" | "rareelite" } records.
+    lua_newtable(L);
+    for (size_t index = 0; index < rares.size(); ++index) {
+        const rare_scan_entry& rare = rares[index];
+
+        std::ostringstream guidText;
+        guidText << "0x" << std::hex << std::uppercase
+                 << std::setw(16) << std::setfill('0') << rare.GUID;
+
+        lua_pushnumber(L, static_cast<double>(index + 1));
+        lua_newtable(L);
+
+        lua_pushstring(L, "guid");
+        lua_pushstring(L, guidText.str());
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "distance");
+        lua_pushnumber(L, rare.distance);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "classification");
+        lua_pushstring(L, rare.classification == CLASSIFICATION_RARE
+            ? "rare" : "rareelite");
+        lua_settable(L, -3);
+
+        lua_settable(L, -3);
+    }
+
+    return 1;
+}
+
 bool targetNearestEnemy(float distanceLimit) {
     vector<struct mob_entity> mobs{};
 

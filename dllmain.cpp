@@ -198,7 +198,7 @@ int __fastcall detoured_UnitXP(void* L) {
                 lua_pushboolean(L, targetEnemyWithMostHP(targetingFarRange));
                 return 1;
             }
-            if (subcmd == "worldBoss") {
+            if (subcmd == "rares") {\n                return scanRareUnits(L);\n            }\n            if (subcmd == "worldBoss") {
                 lua_pushboolean(L, targetWorldBoss(FLT_MAX));
                 return 1;
             }

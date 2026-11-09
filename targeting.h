@@ -25,7 +25,7 @@ extern float targetingFarRange;
 // Return true when found a target
 bool targetNearestEnemy(float distanceLimit);
 bool targetEnemyWithMostHP(float distanceLimit);
-bool targetWorldBoss(float distanceLimit);
+bool targetWorldBoss(float distanceLimit);\n\n// Push an array of currently visible rare and rare-elite units to Lua.\nint scanRareUnits(void* L);
 bool targetEnemyConsideringDistance(MOB_SELECTFUNCTION selectFunction);
 bool targetEnemyInCycle(MOB_SELECTFUNCTION selectFunction);
 bool targetMarkedEnemyInCycle(MOB_SELECTFUNCTION_WITH_MARK selectFunction, std::string priority);
