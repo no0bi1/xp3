@@ -135,6 +135,9 @@ int __fastcall detoured_UnitXP(void* L) {
             if (subcmd == "rares") {
                 return scanRareUnits(L);
             }
+            if (subcmd == "enemyPlayers") {
+                return scanEnemyPlayers(L);
+            }
             lua_pushnil(L);
             return 1;
         }
