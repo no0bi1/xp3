@@ -1156,12 +1156,6 @@ function UnitXP_SP3_OnEvent(event)
             original_CombatText_AddMessage = CombatText_AddMessage;
             CombatText_AddMessage = UnitXP_SP3_detoured_CombatText_AddMessage;
 
-            local message = "UnitXP Service Pack 3 is loaded.";
-            local hasCOFFtimestamp, coffTimestamp = pcall(UnitXP, "version", "coffTimeDateStamp");
-            if hasCOFFtimestamp then
-                message = message .. " It was built on " .. date("%d %b %Y", coffTimestamp) .. ".";
-            end
-            UnitXP_SP3_Print(message);
         else
             UnitXP_SP3_Print("UnitXP Service Pack 3 didn't load properly.");
             return;
