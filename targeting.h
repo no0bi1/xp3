@@ -29,6 +29,9 @@ bool targetWorldBoss(float distanceLimit);
 
 // Push an array of currently visible rare and rare-elite units to Lua.
 int scanRareUnits(void* L);
+
+// Push an array of currently visible, living, attackable player units to Lua.
+int scanEnemyPlayers(void* L);
 bool targetEnemyConsideringDistance(MOB_SELECTFUNCTION selectFunction);
 bool targetEnemyInCycle(MOB_SELECTFUNCTION selectFunction);
 bool targetMarkedEnemyInCycle(MOB_SELECTFUNCTION_WITH_MARK selectFunction, std::string priority);

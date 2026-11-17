@@ -118,6 +118,92 @@ int scanRareUnits(void* L) {
     return 1;
 }
 
+// Scan the object manager for attackable, living player units (enemy players in view).
+// Returns an array of { guid = "0x...", distance = yards }, nearest first. Works whether or not
+// a nameplate is shown, so Spy can detect players that XP3 nameplate settings hide.
+int scanEnemyPlayers(void* L) {
+    struct enemy_player_entry {
+        uint64_t GUID;
+        float distance;
+    };
+
+    vector<enemy_player_entry> players;
+
+    uint32_t objects = *reinterpret_cast<uint32_t*>(0xb41414);
+    if (objects == 0) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    uint32_t objectList = *reinterpret_cast<uint32_t*>(objects + 0xa4);
+    if (objectList == 0) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    uint32_t i = *reinterpret_cast<uint32_t*>(objects + 0xac);
+    uint64_t playerGUID = vanilla1121_unitGUID("player");
+    uint32_t player = playerGUID ? vanilla1121_getVisiableObject(playerGUID) : 0;
+
+    if (player == 0) {
+        lua_newtable(L);
+        return 1;
+    }
+
+    size_t scannedObjects = 0;
+    while (i != 0 && (i & 1) == 0 && scannedObjects++ < 10000) {
+        uint32_t next = *reinterpret_cast<uint32_t*>(objectList + i + 4);
+
+        if (i != player && vanilla1121_objectType(i) == OBJECT_TYPE_Player
+            && vanilla1121_unitIsDead(i) == 0
+            && vanilla1121_unitCanBeAttacked(i) == 1) {
+            uint64_t guid = vanilla1121_unitGUID(i);
+            if (guid != 0 && guid != playerGUID) {
+                enemy_player_entry entry{};
+                entry.GUID = guid;
+                entry.distance = UnitXP_distanceBetween(
+                    reinterpret_cast<void*>(player),
+                    reinterpret_cast<void*>(i),
+                    METER_RANGED);
+                players.push_back(entry);
+            }
+        }
+
+        i = next;
+    }
+
+    sort(players.begin(), players.end(),
+        [](const enemy_player_entry& a, const enemy_player_entry& b) {
+            if (a.distance < 0.0f) return false;
+            if (b.distance < 0.0f) return true;
+            return a.distance < b.distance;
+        });
+
+    lua_newtable(L);
+    for (size_t index = 0; index < players.size(); ++index) {
+        const enemy_player_entry& p = players[index];
+
+        std::ostringstream guidText;
+        guidText << "0x" << std::hex << std::uppercase
+                 << std::setw(16) << std::setfill('0') << p.GUID;
+
+        lua_pushnumber(L, static_cast<double>(index + 1));
+        lua_newtable(L);
+
+        lua_pushstring(L, "guid");
+        lua_pushstring(L, guidText.str());
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "distance");
+        lua_pushnumber(L, p.distance);
+        lua_settable(L, -3);
+
+        lua_settable(L, -3);
+    }
+
+    return 1;
+}
+
 bool targetNearestEnemy(float distanceLimit) {
     vector<struct mob_entity> mobs{};
 
